@@ -1,0 +1,8 @@
+{
+    serverKey: "/etc/ssl/private/server.key",
+    serverCert: "/etc/ssl/server.crt",
+    chainCert: "./positivessl.crt",
+    CACerts: "./ca.crt",
+    routes: "routes.json",
+    modules: [ "test" ]
+}

@@ -1,0 +1,14 @@
+{
+    "name": "yxorp-edon",
+    "version": "0.0.1",
+    "license": "MIT",
+    "repository" : {
+        "type" : "git",
+        "url" : "https://github.com/risacher/yxorp-edon.git"
+    },
+    "dependencies": {
+        "http-proxy": "^1.13.2",
+        "jsonwebtoken": "^7.1.3",
+        "ocsp": "^1.1.0"
+    }
+}

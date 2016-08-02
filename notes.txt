@@ -1,0 +1,9 @@
+# WHY DOES THE DOWNLOAD NOT HAVE ALL THE BLEEDING CAs?!?
+
+wget http://dodpki.c3pki.chamb.disa.mil/rel3_dodroot_2048.cac
+openssl pkcs7 -inform DER -in rel3_dodroot_2048.cac -print_certs
+
+
+http://iase.disa.mil/pki-pke/pages/tools.aspx
+
+http://iasecontent.disa.mil/pki-pke/Certificates_PKCS7_v5.0u1_DoD.zip
