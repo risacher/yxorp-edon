@@ -1,2 +1,2 @@
 # yxorp-edon
-A reverse node proxy
+A reverse node proxy, fulfilling much the same functions as NGINX. 
