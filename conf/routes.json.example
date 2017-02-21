@@ -1,0 +1,12 @@
+{	
+    "risacher.org/ttyx/": 	 "127.0.0.1:3000",
+    "risacher.org/osjs/": 	 "127.0.0.1:8000",
+    "risacher.org/term/": 	 "127.0.0.1:8001",
+    "risacher.org/outport": 	 "127.0.0.1:8002",
+    "risacher.org/pki/": 	 "127.0.0.1:81",
+    "risacher.org": 		 "127.0.0.1:81",
+    "www.risacher.org/term/": 	 "127.0.0.1:8001",
+    "www.risacher.org/outport":  "127.0.0.1:8002",
+    "www.risacher.org/pki/": 	 "127.0.0.1:81",
+    "www.risacher.org": 	 "127.0.0.1:81"
+}

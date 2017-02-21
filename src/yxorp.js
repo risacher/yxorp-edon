@@ -1,14 +1,16 @@
 "use strict";
 
 
-var fs = require('fs');
-var http = require('http');
-var https = require('https');
-var util = require('util');
-var constants = require('constants');
-var httpProxy = require('http-proxy');
-var proxyTable = require('./proxy-table.js');
-var ocsp = require('ocsp');
+const fs = require('fs');
+const http = require('http');
+const https = require('https');
+const util = require('util');
+const constants = require('constants');
+const httpProxy = require('http-proxy');
+const proxyTable = require('./proxy-table.js');
+const ocsp = require('ocsp');
+const repl = require('repl');
+const jwt = require('jsonwebtoken');
 
 var ocspCache = new ocsp.Cache();
 
@@ -23,6 +25,8 @@ try{
 	  console.log("error parsing config");
 	  console.log("error was "+ err.message);
 }
+
+
 
 var read_routes = function(event, filename) {
     var routes_file = fs.readFileSync(config.routes);
@@ -53,10 +57,13 @@ var proxy = httpProxy.createProxyServer({
     xfwd : true
 });
 
+// I think the API changed and req and res will never be defined here
 proxy.on('error', function(err, req, res) {
-    console.log("prox error: ", err);
-    res.writeHead(502);
-    res.end("502 Bad Gateway\n\n" + JSON.stringify(err, null, "  "));
+    console.log("prox error: ", err, req, res);
+    if (res.writeHead && res.end) {
+        res.writeHead(502);
+        res.end("502 Bad Gateway\n\n" + JSON.stringify(err, null, "  "));
+    }
 });
 
 // If it ain't Baroque, don't fix it
@@ -70,69 +77,6 @@ var optClientAuth = {
     requestCert: true,
     rejectUnauthorized: true
 };
-
-var listener = function(req, res) {
-    
-    console.log(  req.method, req.headers.host, req.url, req.socket.localPort);
-    //* do loadable module here */
-    if (req.url == '/pki/') { 
-        console.log("PKI CODE ACTIVATED!");
-        var socket = req.connection;
-        var result = socket.renegotiate(optClientAuth, function(err){
-            if (!err) {
-                console.log(req.connection.getPeerCertificate());
-                
-                res.writeHead(200);
-                
-                res.end("<pre>"
-                        +JSON.stringify(req.connection.getCipher(),null, "  ")
-                        +"\n"
-                        +JSON.stringify(req.connection.getPeerCertificate(),null, "  ")
-                        +"</pre>"
-                        +"Authenticated Hello World\n");
-                
-            } else {
-                console.log(err.message);
-            }
-        });
-        return;
-    }
-
-
-    var target = table.getProxyLocation(req);
-    console.log( 'target: ', target );
-
-
-    if (null != target) {
-	      proxy.web(req, res, { target: target });
-    } else {
-        console.log ("UNMATCHED request: ", req.url);
-        res.writeHead(502);
-        res.end("502 Bad Gateway\n\n" + "UNMATCHED request: "+ req.url);
-    }
-};
-
-//
-// Create your custom server and just call `proxy.web()` to proxy 
-// a web request to the target passed in the options
-// also you can use `proxy.ws()` to proxy a websockets request
-//
-
-function parseCertChain(chain) {
-    chain = chain.split('\n');
-    var ca = [];
-    var cert = [];
-    var line;
-    while (chain.length > 0) {
-        line = chain.shift();
-        cert.push(line); 
-        if (line.match(/-END CERTIFICATE-/)) {
-            ca.push(cert.join('\n'));
-            cert = [];
-        }
-    }
-    return ca;
-}
 
 var https_options = {
     key: fs.readFileSync(config.serverKey, 'utf8'),
@@ -160,6 +104,84 @@ var https_options = {
         ].join(':')
 };
 
+var listener = function(req, res) {
+    
+    console.log(  req.method, req.headers.host, req.url, req.socket.localPort);
+    //* do loadable module here */
+    if (req.url == '/pki/') { 
+        console.log("PKI CODE ACTIVATED!");
+        var socket = req.connection;
+        var result = socket.renegotiate(optClientAuth, function(err){
+            if (!err) {
+                // catch errors - getPeerCertificate() can be undef if user something goes wrong
+                var token = jwt.sign({CN: req.connection.getPeerCertificate().subject.CN,
+                                      exp: Math.floor(new Date().getTime()/1000) + 7*24*60*60,
+                                      iat: Math.floor(Date.now() / 1000) - 30 },
+                                     https_options.key);
+                console.log('jwt:', token);
+                
+                res.setHeader('Set-Cookie', ['jwt='+token+'; Path=/; Secure']);   
+                //console.log(req.connection.getPeerCertificate());
+               
+                
+                res.writeHead(200);
+                
+                res.end("<pre>"
+                        +JSON.stringify(req.connection.getCipher(),null, "  ")
+                        +"\n"
+                        +JSON.stringify(req.connection.getPeerCertificate(),null, "  ")
+                        +"</pre>"
+                        +"Authenticated Hello World\n");
+
+                
+            } else {
+                console.log(err.message);
+            }
+        });
+        return;
+    }
+
+    if (!req.headers.host && config.defaultTarget) {
+        req.headers.host = config.defaultTarget;
+    }
+
+    var target = table.getProxyLocation(req);
+    console.log( 'target: ', target );
+
+
+    if (null == target) {
+        console.log ("UNMATCHED request: ", req.url);
+        res.writeHead(502);
+        res.end("502 Bad Gateway\n\n" + "UNMATCHED request: "+ req.url);
+    } else {
+        proxy.web(req, res, { target: target });
+    }
+
+};
+
+//
+// Create your custom server and just call `proxy.web()` to proxy 
+// a web request to the target passed in the options
+// also you can use `proxy.ws()` to proxy a websockets request
+//
+
+function parseCertChain(chain) {
+    chain = chain.split('\n');
+    var ca = [];
+    var cert = [];
+    var line;
+    while (chain.length > 0) {
+        line = chain.shift();
+        cert.push(line); 
+        if (line.match(/-END CERTIFICATE-/)) {
+            ca.push(cert.join('\n'));
+            cert = [];
+        }
+    }
+    return ca;
+}
+
+
 //console.log(https_options);
 
 var server = http.createServer(listener).listen(80);
@@ -180,7 +202,7 @@ httpsServer.on('resumeSession', function(id, cb) {
 });
 
 httpsServer.on('tlsClientError', function(e, socket) {
-    console.log('tlsClientError - ', e.message);
+    console.log("tlsClientError - ", e.message);
 });
 
 //console.log(httpsServer);
@@ -193,6 +215,7 @@ ocsp.getOCSPURI(https_options.cert, function(err, uri) {
             console.log("OCSP request");
             ocsp.getOCSPURI(cert, function(err, uri) {
                 console.log("OCSP cert", cert);
+                console.log("OCSP issuer", issuer);
                 
                 if (err) {
                     return cb(err);
@@ -206,11 +229,11 @@ ocsp.getOCSPURI(https_options.cert, function(err, uri) {
                 
                 ocspCache.probe(req.id, function(e, res) {
                     if (res) {
-                        console.log('OCSP hit', req.id);                
+                        console.log("OCSP hit", req.id);                
                         return cb(null, res.response);
                     }
                     ocspCache.request(req.id, options, function(a,b) {
-                        console.log('OCSP miss', req.id);
+                        console.log("OCSP miss", req.id);
                         cb(a,b);
                     });
                 });
@@ -237,3 +260,91 @@ var upgrade = function (req, socket, head) {
 server.on('upgrade', upgrade);
 httpsServer.on('upgrade', upgrade);
 
+
+
+var mods = {};
+var mod_names = [];
+var modDir = "/modules/";
+var lastErr; 
+
+function loadMod(modName) {
+    //     // What if the module was already loaded?  Reload it, I guess.
+    unloadMod(modName);
+    
+    var path = process.cwd()+modDir+modName;
+    try {
+        console.log("begin loading "+modName);
+        mods[modName] = require(path);
+        mod_names.push(modName);
+        if (typeof mods[modName]['load'] == 'function') {
+            console.log("calling load "+modName);
+            mods[modName]['load'](this);
+        }
+        console.log("done loading "+modName);
+    } catch (e) {
+        console.log("error while loading module "+modName);
+        console.log(e);
+        lastErr = e;
+        return e;
+    }
+    return;
+}
+
+function unloadMod(modName) {
+    console.log("req unload '%s'",modName);
+    if (mods[modName]) {
+        if (typeof mods[modName]['unload'] == 'function') {
+            console.log("calling unload "+modName);
+            try {
+                mods[modName]['unload'](this);
+            } catch (e) {
+                console.log("error while loading module "+modName);
+                console.log(e);
+                lastErr = e;
+                // don't return the error because we still should try to unload it.
+                // return e;
+            }
+        }
+        delete mods[modName];
+        var index = mod_names.indexOf(modName);    
+        if (index !== -1) {
+            mod_names.splice(index, 1);
+        }
+    }
+    var path = process.cwd()+modDir+modName;
+    if (! /\.js$/.test(path)) { path += '.js'; };
+    console.log("path to unload: ",path);
+    path = require.resolve(path);
+    console.log("resovled path to unload: ",path);
+
+    if (require.cache[path]) {
+        delete require.cache[path];
+    };
+}
+
+
+
+function testResolve(path) {
+    console.log(require.resolve(path));
+//    console.log(require);
+}
+
+// start REPL 
+
+const r = repl.start('> ');
+Object.defineProperty(r.context, 'loadMod', {
+  configurable: false,
+  enumerable: true,
+  value: loadMod
+});
+Object.defineProperty(r.context, 'testResolve', {
+  configurable: false,
+  enumerable: true,
+  value: testResolve
+});
+Object.defineProperty(r.context, 'unloadMod', {
+  configurable: false,
+  enumerable: true,
+  value: unloadMod
+});
+// end REPL
