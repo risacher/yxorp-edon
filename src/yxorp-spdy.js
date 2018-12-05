@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const http = require('http');
-const https = require('https');
+var https = require('spdy');
 const util = require('util');
 const constants = require('constants');
 const httpProxy = require('http-proxy');
@@ -71,7 +71,7 @@ proxy.on('error', function(err, req, res) {
 
 // If it ain't Baroque, don't fix it
 proxy.on('proxyReq', function(proxyReq, req, res, options) {
-    console.log ("req" );
+//    console.log ("req" );
 //    proxyReq.setHeader('X-Forwarded-For', req.remoteAddr);
 });
 
@@ -84,7 +84,7 @@ var optClientAuth = {
 // proxyRes is fired when the response is received from the downstream (target) server
 // Status code 496 is an unofficial code used by NGINX as "SSL Certificate Required"
 proxy.on('proxyRes', function (proxyRes, req, res) {
-  if (proxyRes.statusCode !== 200) {
+  if (proxyRes.statusCode !== 200 && proxyRes.statusCode !== 304) {
     console.log('RAW Response from the target', JSON.stringify(proxyRes.statusCode, true, 2));
   }
   if (proxyRes.statusCode == 496) {
@@ -115,32 +115,6 @@ proxy.on('proxyRes', function (proxyRes, req, res) {
 
                                  
 
-var https_options = {
-  key: fs.readFileSync(config.serverKey, 'utf8'),
-  cert: fs.readFileSync(config.serverCert, 'utf8'),
-  ca: parseCertChain(fs.readFileSync(config.CACerts, 'utf8')),
-  secureOptions: constants.SSL_OP_NO_SSLv3 | constants.SSL_OP_NO_SSLv2 | constants.SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION,
-  //secureOptions:require('constants').SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION,
-  // https://certsimple.com/blog/a-plus-node-js-ssl
-  ciphers: [
-    "ECDHE-RSA-AES256-SHA256",
-    "ECDHE-RSA-AES256-SHA384",
-    "DHE-RSA-AES256-SHA384",
-    "DHE-RSA-AES256-SHA256",
-    "ECDHE-RSA-AES128-SHA256",
-    "DHE-RSA-AES128-SHA256",
-    "HIGH",
-    "!aNULL",
-    "!eNULL",
-    "!EXPORT",
-    "!DES",
-    "!RC4",
-    "!MD5",
-    "!PSK",
-    "!SRP",
-    "!CAMELLIA"
-  ].join(':')
-};
                                   
 function getClientCert(req, res, cb) {
   var socket = req.connection;
@@ -201,7 +175,7 @@ var listener = function(req, res) {
   }
   
   var target = table.getProxyLocation(req);
-  console.log( 'target: ', target );
+//  console.log( 'target: ', target );
   
   
   if (null == target) {
@@ -240,33 +214,71 @@ function parseCertChain(chain) {
 //console.log(https_options);
 
 var server = http.createServer(listener).listen(80);
-var httpsServer = https.createServer(https_options, listener).listen(443);
+var https_server;
+var https_options;
+
+function init_https() {
+  https_options = {
+    key: fs.readFileSync(config.serverKey, 'utf8'),
+    cert: fs.readFileSync(config.serverCert, 'utf8'),
+    ca: parseCertChain(fs.readFileSync(config.CACerts, 'utf8')),
+    secureOptions: constants.SSL_OP_NO_SSLv3 | constants.SSL_OP_NO_SSLv2 | constants.SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION,
+    //secureOptions:require('constants').SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION,
+    // https://certsimple.com/blog/a-plus-node-js-ssl
+    ciphers: [
+      "ECDHE-RSA-AES256-SHA256",
+      "ECDHE-RSA-AES256-SHA384",
+      "DHE-RSA-AES256-SHA384",
+      "DHE-RSA-AES256-SHA256",
+      "ECDHE-RSA-AES128-SHA256",
+      "DHE-RSA-AES128-SHA256",
+      "HIGH",
+      "!aNULL",
+      "!eNULL",
+      "!EXPORT",
+      "!DES",
+      "!RC4",
+      "!MD5",
+      "!PSK",
+      "!SRP",
+      "!CAMELLIA"
+    ].join(':')
+  };
+  if (https_server) { https_server.close(); }
+  console.log("*** reloading https_server ***") ;
+  https_server = https.createServer(https_options, listener).listen(443);
+}
+
+init_https();
+fs.watch(config.serverCert, {persistent: false}, init_https);
+
 
 // Simpleminded TLS session store
 // This leaks memory I think, in that it never forgets old sessions
 // 
 var tlsSessionStore = {};
-httpsServer.on('newSession', function(id, data, cb) {
+
+https_server.on('newSession', function(id, data, cb) {
     console.log("new tls session", id);
     tlsSessionStore[id] = data;
     cb();
 });
-httpsServer.on('resumeSession', function(id, cb) {
+https_server.on('resumeSession', function(id, cb) {
     console.log("resume tls session", id);
     cb(null, tlsSessionStore[id] || null);
 });
 
-httpsServer.on('tlsClientError', function(e, socket) {
+https_server.on('tlsClientError', function(e, socket) {
     console.log("tlsClientError - ", e.message);
 });
 
-//console.log(httpsServer);
+//console.log(https_server);
 
 ocsp.getOCSPURI(https_options.cert, function(err, uri) { 
     if( err ) {
         console.log("No OCSP URI, disabling OCSP: ", err);
     } else {
-        httpsServer.on('OCSPRequest', function(cert, issuer, cb) {
+        https_server.on('OCSPRequest', function(cert, issuer, cb) {
             console.log("OCSP request");
             ocsp.getOCSPURI(cert, function(err, uri) {
                 console.log("OCSP cert", cert);
@@ -305,7 +317,7 @@ ocsp.getOCSPURI(https_options.cert, function(err, uri) {
 //
 
 var upgrade = function (req, socket, head) {
-    console.log("UPGRADE", req.url, socket.localPort);
+//    console.log("UPGRADE", req.url, socket.localPort);
     var target = table.getProxyLocation(req);
     if (null != target) {
 	      proxy.ws(req, socket, head, {target: target});
@@ -313,7 +325,7 @@ var upgrade = function (req, socket, head) {
 };
 
 server.on('upgrade', upgrade);
-httpsServer.on('upgrade', upgrade);
+https_server.on('upgrade', upgrade);
 
 
 
@@ -376,7 +388,6 @@ function unloadMod(modName) {
         delete require.cache[path];
     };
 }
-
 
 
 function testResolve(path) {

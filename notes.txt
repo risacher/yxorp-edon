@@ -1,9 +1,73 @@
+2017-11-04
+
+I should really put all my projects in github.  Have I done this already?
+I think yxorp is on github, but I should start a branch for the renegotiation work.
+
+And I don't think I've pushed the code recently.
+
+Also: it would be good to be able to simulate a DoD PKI cert
+(soft-cert from self-signed CA) for developing on machines without smartcard.
+
+2017-08-28
+
+Renegotiation woes:
+              https://github.com/nodejs/node/issues/2259
+
+https://github.com/nodejitsu/node-http-proxy/pull/737
+
+The problem with doing the renegotiation inside the proxyRes handler
+is that the we are proxying the result to the client *during* the
+renegotiation, as the below trace from openssl s_client
+shows. Apparently the renegotiate() call is asynchronous.
+
+ GET /3002/pki/
+ 
+ SSL_connect:SSL renegotiate ciphers
+ SSL_connect:SSLv3 write client hello A
+ SSL_connect:error in SSLv3 read server hello A
+ HTTP/1.1 302 Found
+ location: https://risacher.org/blog/
+ date: Mon, 28 Aug 2017 11:57:26 GMT
+ connection: close
+ transfer-encoding: chunked
+
+20SSL_connect:error in SSLv3 read server hello A
+
+
+Below link has an example of modifying the html stream, which I think
+maybe I could adapt to handle a 496 response - it rebinds the
+res.writeHead() &c. methods, which maybe could be replaced with
+versions that would wait for the renegotiation to complete. 
+
+https://github.com/nodejitsu/node-http-proxy/issues/796
+
+
+2016-12-07
 # WHY DOES THE DOWNLOAD NOT HAVE ALL THE BLEEDING CAs?!?
 
 wget http://dodpki.c3pki.chamb.disa.mil/rel3_dodroot_2048.cac
 openssl pkcs7 -inform DER -in rel3_dodroot_2048.cac -print_certs
 
-
+This page has the list of tools:
 http://iase.disa.mil/pki-pke/pages/tools.aspx
 
+Which includes the zip file of the latest certs:
 http://iasecontent.disa.mil/pki-pke/Certificates_PKCS7_v5.0u1_DoD.zip
+
+
+2016-11-30 
+
+nodejs does not yet support http/2 in core.  There is a third-party
+module (molnarg/node-http2) that implements most of the https API, but
+it's different enough that node-web-proxy can't use it.
+
+I've starred most of the threads on github that talk about adding
+http/2 support, and when it lands in core, then I should try again and
+ping the node-web-proxy devs if necessary.
+
+2016-06-07
+
+proxy.on('proxyRes', function (proxyRes, req, res) {
+    console.log('RAW Response from the target', JSON.stringify(proxyRes.statusCode, true, 2));
+});
+

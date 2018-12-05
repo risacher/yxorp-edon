@@ -2,7 +2,9 @@
 
 var fs = require('fs');
 
-var data = fs.readFileSync("dod_ca.crt");
+var data = fs.readFileSync("DoD_CAs.pem");
+
+var output = "";
 
 //process.stdout.write(data);
 
@@ -19,11 +21,17 @@ res [3] = cert block
 
 var res;
 while ((res = re.exec(data)) !== null) {
-    console.log("subject ", res[1]);
-    console.log("issuer  ", res[2]);
+  if (res[1].match(/EMAIL|Root/)) {
+//    console.log("subject ", res[1]);
+//    console.log("issuer  ", res[2]);
+    output += res[0];
+  }
 //  var msg = 'Found ' + res[3] + '. ';
 //  var msg += 'Found ' + res[3] + '. ';
 //  msg += 'Next match starts at ' + re.lastIndex;
 //  console.log(msg);
 }
 //console.log(JSON.stringify(res, null," "));
+
+fs.writeFile("../conf/email-only.pem", output, 'utf8', function(err) {
+if (err) { console.log(err); } });
