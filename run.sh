@@ -1,8 +1,8 @@
 #!/bin/bash
 
 while (true); do 
-    /usr/bin/node src/yxorp.js;
+    /usr/bin/nodejs src/yxorp.js;
     echo CRASH RESTART;
-    sleep 5; 
+    sleep 1; 
     done;
 

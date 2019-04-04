@@ -1,5 +1,6 @@
 "use strict";
 
+process.title = "yxorp (nodejs)";
 
 const fs = require('fs');
 const http = require('http');
@@ -16,7 +17,25 @@ var tls = require('tls');
 //tls.CLIENT_RENEG_WINDOW = 1 / 0;
 var ocspCache = new ocsp.Cache();
 
+var debug = {
+  "proxy": true,
+  "ocsp": true,
+  "routing": true,
+  "config": true,
+  "reneg": true,
+  'jwt': true,
+  'tls': true,
+  'modules': true,
+  'error': true
+};
+
 var table;
+
+function log (category, args) {
+  if (debug[category]) {
+    console.log(Array.prototype.slice.call(arguments, 1));
+  }
+}
 
 var config, config_file = "conf/proxyconf.json";
 config_file = fs.readFileSync(config_file, "utf8");
@@ -24,8 +43,8 @@ config_file = fs.readFileSync(config_file, "utf8");
 try{ 
     config = JSON.parse(config_file);
 } catch (err) {
-	  console.log("error parsing config");
-	  console.log("error was "+ err.message);
+  log('error', "error parsing config");
+  log('error', "error was "+ err.message);
 }
 
 var jwtKey = fs.readFileSync(config.jwtKey, "utf8");
@@ -37,16 +56,16 @@ var read_routes = function(event, filename) {
     try {
 	      routes_json = JSON.parse(routes_file);
     } catch (err) {
-	      console.log("error parsing json file");
-	      console.log("routes_file: ", routes_file);
-	      console.log("routes_json: ", routes_json);
-	      console.log("error was "+ err.message);
+	      log('error', "error parsing json file");
+	      log('error', "routes_file: ", routes_file);
+	      log('error', "routes_json: ", routes_json);
+	      log('error', "error was "+ err.message);
     }
     if (typeof(routes_json) == 'object') {
 	      table = new proxyTable.ProxyTable({router: routes_json});
-	      console.log("routes: ", routes_json);
+	      log('config', "routes: ", routes_json);
     } else {
-	      console.log("routes_json not an object: ", typeof(routes_json));
+	      log('error', "routes_json not an object: ", typeof(routes_json));
     }
 };
 
@@ -62,7 +81,7 @@ var proxy = httpProxy.createProxyServer({
 
 // I think the API changed and req and res will never be defined here
 proxy.on('error', function(err, req, res) {
-    console.log("prox error: ", err, req, res);
+    log('error', "prox error: ", err, req, res);
     if (res.writeHead && res.end) {
         res.writeHead(502);
         res.end("502 Bad Gateway\n\n" + JSON.stringify(err, null, "  "));
@@ -71,7 +90,7 @@ proxy.on('error', function(err, req, res) {
 
 // If it ain't Baroque, don't fix it
 proxy.on('proxyReq', function(proxyReq, req, res, options) {
-    console.log ("req" );
+  log ('proxy', "req" );
 //    proxyReq.setHeader('X-Forwarded-For', req.remoteAddr);
 });
 
@@ -85,31 +104,31 @@ var optClientAuth = {
 // Status code 496 is an unofficial code used by NGINX as "SSL Certificate Required"
 proxy.on('proxyRes', function (proxyRes, req, res) {
   if (proxyRes.statusCode !== 200) {
-    console.log('RAW Response from the target', JSON.stringify(proxyRes.statusCode, true, 2));
+    log('proxy', 'RAW Response from the target', JSON.stringify(proxyRes.statusCode, true, 2));
   }
   if (proxyRes.statusCode == 496) {
     proxyRes.statusCode = 302;
     var socket = req.connection;
     try {
-      console.log('attempting renegotiation:');
+      log('reneg', 'attempting renegotiation:');
       var result = socket.renegotiate(optClientAuth, function(err){
-        console.log("inside reneg callback");
+        log('reneg', "inside reneg callback");
         if (!err) {
-          console.log('redirecting to ', proxyRes.headers.Location);
+          log('reneg', 'redirecting to ', proxyRes.headers.Location);
           res.setHeader('Location', proxyRes.headers.Location);   
           res.writeHead(302);
           res.end("302: Redirecting after TLS renegotiation");
           
         } else {
-          console.log("err from reneg: ", err.message);
+          log('error', "err from reneg: ", err.message);
         }
       });
     } catch (e) {
-      console.log("entering catch block");
-      console.log(e);
-      console.log("leaving catch block");
+      log('error', "entering catch block");
+      log('error', e);
+      log('error', "leaving catch block");
     }
-    console.log('attempted renegotiation');
+    log('reneg', 'attempted renegotiation');
   }
 });
 
@@ -145,39 +164,39 @@ var https_options = {
 function getClientCert(req, res, cb) {
   var socket = req.connection;
   var result = socket.renegotiate(optClientAuth, function(err){
-    if (!err) {
+    if (!err && req.connection.getPeerCertificate()) {
       // catch errors - getPeerCertificate() can be undef if user something goes wrong
       var token = jwt.sign({CN: req.connection.getPeerCertificate().subject.CN,
                             exp: Math.floor(new Date().getTime()/1000) + 7*24*60*60,
                             iat: Math.floor(Date.now() / 1000) - 30 },
                            jwtKey);
-      console.log('jwt:', token);
+      log('jwt', 'jwt:', token);
       
       res.setHeader('Set-Cookie', ['jwt='+token+'; Path=/; Secure']);   
       cb(req, res);
       
     } else {
-      console.log(err.message);
+      log('error', err?err.message:"no cert");
     }
   });
 }
 
 var listener = function(req, res) {
   
-  console.log(  req.method, req.headers.host, req.url, req.socket.localPort);
+  log('proxy',   req.method, req.headers.host, req.url, req.socket.localPort);
   //* do loadable module here */
   if (req.url == '/pki/') { 
-    console.log("PKI CODE ACTIVATED!");
+    log('jwt', "PKI CODE ACTIVATED!");
     var socket = req.connection;
     var result = socket.renegotiate(optClientAuth, function(err){
-      console.log("inside hardcoded renegotiate callback");
-      if (!err) {
+      log('jwt', "inside hardcoded renegotiate callback");
+      if (!err && req.connection.getPeerCertificate()) {
         // catch errors - getPeerCertificate() can be undef if something goes wrong
         var token = jwt.sign({CN: req.connection.getPeerCertificate().subject.CN,
                               exp: Math.floor(new Date().getTime()/1000) + 7*24*60*60,
                               iat: Math.floor(Date.now() / 1000) - 30 },
                              jwtKey);
-        console.log('jwt:', token);
+        log('jwt', 'jwt:', token);
         
         res.setHeader('Set-Cookie', ['jwt='+token+'; Path=/; Secure']);   
         res.writeHead(200);
@@ -190,7 +209,7 @@ var listener = function(req, res) {
         //        cb(req, res);
         
       } else {
-        console.log(err.message);
+        log('error', err?err.message:"no cert");
       }
     });
     return;
@@ -201,11 +220,11 @@ var listener = function(req, res) {
   }
   
   var target = table.getProxyLocation(req);
-  console.log( 'target: ', target );
+  log('proxy',  'target: ', target );
   
   
   if (null == target) {
-    console.log ("UNMATCHED request: ", req.url);
+    log ('routing', "UNMATCHED request: ", req.url);
     res.writeHead(502);
     res.end("502 Bad Gateway\n\n" + "UNMATCHED request: "+ req.url);
   } else {
@@ -237,7 +256,7 @@ function parseCertChain(chain) {
 }
 
 
-//console.log(https_options);
+//log('error', https_options);
 
 var server = http.createServer(listener).listen(80);
 var httpsServer = https.createServer(https_options, listener).listen(443);
@@ -247,30 +266,30 @@ var httpsServer = https.createServer(https_options, listener).listen(443);
 // 
 var tlsSessionStore = {};
 httpsServer.on('newSession', function(id, data, cb) {
-    console.log("new tls session", id);
+    log('tls', "new tls session", id);
     tlsSessionStore[id] = data;
     cb();
 });
 httpsServer.on('resumeSession', function(id, cb) {
-    console.log("resume tls session", id);
+    log('tls', "resume tls session", id);
     cb(null, tlsSessionStore[id] || null);
 });
 
 httpsServer.on('tlsClientError', function(e, socket) {
-    console.log("tlsClientError - ", e.message);
+    log('tls', "tlsClientError - ", e.message);
 });
 
-//console.log(httpsServer);
+//log('error', httpsServer);
 
 ocsp.getOCSPURI(https_options.cert, function(err, uri) { 
     if( err ) {
-        console.log("No OCSP URI, disabling OCSP: ", err);
+        log('ocsp', "No OCSP URI, disabling OCSP: ", err);
     } else {
         httpsServer.on('OCSPRequest', function(cert, issuer, cb) {
-            console.log("OCSP request");
+            log('ocsp', "OCSP request");
             ocsp.getOCSPURI(cert, function(err, uri) {
-                console.log("OCSP cert", cert);
-                console.log("OCSP issuer", issuer);
+                log('ocsp', "OCSP cert", cert);
+                log('ocsp', "OCSP issuer", issuer);
                 
                 if (err) {
                     return cb(err);
@@ -284,11 +303,11 @@ ocsp.getOCSPURI(https_options.cert, function(err, uri) {
                 
                 ocspCache.probe(req.id, function(e, res) {
                     if (res) {
-                        console.log("OCSP hit", req.id);                
+                        log('ocsp', "OCSP hit", req.id);                
                         return cb(null, res.response);
                     }
                     ocspCache.request(req.id, options, function(a,b) {
-                        console.log("OCSP miss", req.id);
+                        log('ocsp', "OCSP miss", req.id);
                         cb(a,b);
                     });
                 });
@@ -305,7 +324,7 @@ ocsp.getOCSPURI(https_options.cert, function(err, uri) {
 //
 
 var upgrade = function (req, socket, head) {
-    console.log("UPGRADE", req.url, socket.localPort);
+    log('proxy', "UPGRADE", req.url, socket.localPort);
     var target = table.getProxyLocation(req);
     if (null != target) {
 	      proxy.ws(req, socket, head, {target: target});
@@ -328,17 +347,17 @@ function loadMod(modName) {
     
     var path = process.cwd()+modDir+modName;
     try {
-        console.log("begin loading "+modName);
+        log('modules', "begin loading "+modName);
         mods[modName] = require(path);
         mod_names.push(modName);
         if (typeof mods[modName]['load'] == 'function') {
-            console.log("calling load "+modName);
+            log('modules', "calling load "+modName);
             mods[modName]['load'](this);
         }
-        console.log("done loading "+modName);
+        log('modules', "done loading "+modName);
     } catch (e) {
-        console.log("error while loading module "+modName);
-        console.log(e);
+        log('error', "error while loading module "+modName);
+        log('error', e);
         lastErr = e;
         return e;
     }
@@ -346,15 +365,15 @@ function loadMod(modName) {
 }
 
 function unloadMod(modName) {
-    console.log("req unload '%s'",modName);
+    log('modules', "req unload '%s'",modName);
     if (mods[modName]) {
         if (typeof mods[modName]['unload'] == 'function') {
-            console.log("calling unload "+modName);
+            log('modules', "calling unload "+modName);
             try {
                 mods[modName]['unload'](this);
             } catch (e) {
-                console.log("error while loading module "+modName);
-                console.log(e);
+                log('error', "error while loading module "+modName);
+                log('error', e);
                 lastErr = e;
                 // don't return the error because we still should try to unload it.
                 // return e;
@@ -368,9 +387,9 @@ function unloadMod(modName) {
     }
     var path = process.cwd()+modDir+modName;
     if (! /\.js$/.test(path)) { path += '.js'; };
-    console.log("path to unload: ",path);
+    log('modules', "path to unload: ",path);
     path = require.resolve(path);
-    console.log("resovled path to unload: ",path);
+    log('modules', "resovled path to unload: ",path);
 
     if (require.cache[path]) {
         delete require.cache[path];
@@ -380,8 +399,8 @@ function unloadMod(modName) {
 
 
 function testResolve(path) {
-    console.log(require.resolve(path));
-//    console.log(require);
+    log('modules', require.resolve(path));
+//    log('error', require);
 }
 
 // start REPL 
@@ -401,5 +420,10 @@ Object.defineProperty(r.context, 'unloadMod', {
   configurable: false,
   enumerable: true,
   value: unloadMod
+});
+Object.defineProperty(r.context, 'debug', {
+  configurable: true,
+  enumerable: true,
+  value: debug
 });
 // end REPL

@@ -1,3 +1,22 @@
+
+2019-02-16
+I should really implement wildcard/default routes.
+
+
+2018-12-10
+
+PKI renegotiation is broken - maybe just in http-spdy?
+
+In trying to fix PKI renegotiation, I tried to move risacher.org to
+yxorp-spdy, but I also upgraded to Nodejs 10.14, which breaks spdy,
+which is "effectively unmaintained" - and "req.handle.writev is not a
+function" errors
+
+q.v. https://github.com/addaleax/webpack-dev-server/commit/d141150e437833aff778ab70efa1df9bd1b72724
+
+when I rolled back to yxorp.js (from yxorp-spdy.js) PKI renegotiation came back.
+
+
 2017-11-04
 
 I should really put all my projects in github.  Have I done this already?

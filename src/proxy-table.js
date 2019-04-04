@@ -205,6 +205,7 @@ ProxyTable.prototype.getProxyLocation = function (req) {
 
       return {
         port: port,
+        hostname: host, // added for compatibility w/ http2-proxy
         host: host
       };
     }
@@ -226,6 +227,7 @@ ProxyTable.prototype.getProxyLocation = function (req) {
         req.url = url.format(target.replace(route.source.regexp, ''));
         return {
           protocol: route.target.url.protocol.replace(':', ''),
+          hostname: route.target.url.hostname, //added for compat w/ http2-proxy
           host: route.target.url.hostname,
           port: route.target.url.port
             || (this.target.https ? 443 : 80)
@@ -259,6 +261,7 @@ ProxyTable.prototype.getProxyLocation = function (req) {
 
         return {
           protocol: route.target.url.protocol.replace(':', ''),
+          hostname: route.target.url.hostname, //added for compat w/ http2-proxy
           host: route.target.url.hostname,
           port: route.target.url.port
             || (this.target.https ? 443 : 80)
