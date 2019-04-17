@@ -1,3 +1,10 @@
+2019-04-17
+
+The proxy-table code - which I salvaged from very old versions of
+node-htttp-proxy - needs refactoring.  There's multiple code paths
+that are never used in yxorp, and the path rewriting code needs to be
+tested and rethought.  It's working for the moment. 
+
 2019-04-06
 
 The *actual* problem was that http/2 requests don't have a 'host'
