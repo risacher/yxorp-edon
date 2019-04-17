@@ -19,7 +19,8 @@ var ocspCache = new ocsp.Cache();
 
 var debug = {
   "proxy": true,
-  "ocsp": true,
+  "proxy-headers": false,
+  "ocsp": false,
   "routing": true,
   "config": true,
   "reneg": true,
@@ -28,6 +29,9 @@ var debug = {
   'modules': true,
   'error': true
 };
+
+const outHeadersKey = Object.getOwnPropertySymbols(new http.OutgoingMessage())
+      .filter((e,i,a) => {return (e.toString() === "Symbol(outHeadersKey)"); })[0];
 
 var table;
 
@@ -48,7 +52,6 @@ try{
 }
 
 var jwtKey = fs.readFileSync(config.jwtKey, "utf8");
-
 
 var read_routes = function(event, filename) {
     var routes_file = fs.readFileSync(config.routes);
@@ -90,7 +93,7 @@ proxy.on('error', function(err, req, res) {
 
 // If it ain't Baroque, don't fix it
 proxy.on('proxyReq', function(proxyReq, req, res, options) {
-  log ('proxy', "req" );
+  log ('proxy-headers', "proxyReq headers: ", proxyReq[outHeadersKey] );
 //    proxyReq.setHeader('X-Forwarded-For', req.remoteAddr);
 });
 

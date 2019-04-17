@@ -1,3 +1,30 @@
+2019-04-06
+
+The *actual* problem was that http/2 requests don't have a 'host'
+header.  Instead they have an 'authority:' pseudo-header.  As such,
+when http2 requests came in, they were proxied to http1.1 and the
+'host' header was not being copied across.  The lack of this 'host'
+header caused wordpress-apache2 to generate bogus redirects.  Once I
+added code to re-add the 'host' header, it seems to work. 
+
+
+2019-04-05
+
+The problem with the HTTP2 code is actually a problem with
+internal-redirects.  Wordpress is generating redirects based on the
+incoming requests, which are to the internal address and thus are 'wrong'.
+
+I.e.:
+
+1. the browser connects to risacher.org and requests risacher.org/blog.
+2. yxorp-http2 routes this to http://127.0.0.1:7777/jfdi/
+3. wordpress redirects that to https://127.0.0.1/jfdi/, and yxorp-http2 attempts to follow it internally. 
+4. yxorp-http2 gets its own request to https://127.0.0.1:443/jfdi/ and it either fails to route it or routes it to the wrong place.
+
+I don't know why the old yxorp.js doesn't fall into the same trap or the
+reverse one: is wordpress generating the same redirects?  How are they
+not a problem?
+
 
 2019-02-16
 I should really implement wildcard/default routes.

@@ -202,7 +202,7 @@ ProxyTable.prototype.getProxyLocation = function (req) {
       var location = this.router[target].split(':'),
           host = location[0],
           port = location.length === 1 ? 80 : location[1];
-
+      // THIS CODE IS NOT USED IN YXORP console.log('path1');
       return {
         port: port,
         hostname: host, // added for compatibility w/ http2-proxy
@@ -225,6 +225,7 @@ ProxyTable.prototype.getProxyLocation = function (req) {
       //
       if (target.match(route.source.regexp)) {
         req.url = url.format(target.replace(route.source.regexp, ''));
+        // THIS CODE IS NOT USED IN YXORP console.log('path2');
         return {
           protocol: route.target.url.protocol.replace(':', ''),
           hostname: route.target.url.hostname, //added for compat w/ http2-proxy
@@ -252,17 +253,19 @@ ProxyTable.prototype.getProxyLocation = function (req) {
         //
         var parsed = url.parse(req.url);
 
-        parsed.pathname = parsed.pathname.replace(
+        parsed.path = parsed.path.replace(
           route.source.url.pathname,
           route.target.url.pathname
         );
 
         req.url = url.format(parsed);
-
+        // THIS IS THE ONLY REAL CODE PATH IN YXORP console.log('path3');
+        console.log(parsed);
         return {
           protocol: route.target.url.protocol.replace(':', ''),
           hostname: route.target.url.hostname, //added for compat w/ http2-proxy
           host: route.target.url.hostname,
+          path: parsed.path,
           port: route.target.url.port
             || (this.target.https ? 443 : 80)
         };
