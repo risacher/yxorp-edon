@@ -115,17 +115,20 @@ const listener = function (req, res) {
   log('proxy-headers', 'Incoming REQ Headers', JSON.stringify(req.headers));
   if (req.headers[':authority']) { req.headers.host = req.headers[':authority'];}
   
-  if (!req.headers.host && config.defaultTarget) {
-    req.headers.host = config.defaultTarget;
-  }
-  
   var target = table.getProxyLocation(req);
-  log('routing',  'target: ', JSON.stringify(target) );
+  if (target) { log('routing',  'target: ', JSON.stringify(target) ); }
     
   if (null == target) {
-    log ('routing', "UNMATCHED request: ", req.url);
+    log ('routing', "UNMATCHED request, attempt default target: ", req.url);
+    req.headers.host = config.defaultTarget;
+    target = table.getProxyLocation(req);
+    if (target) { log('routing',  'target: ', JSON.stringify(target) ); }
+  }
+  
+  if (null == target) {
+    log ('routing', "UNMATCHED request2: ", req.url);
     res.writeHead(502);
-    res.end("502 Bad Gateway\n\n" + "MATCHLESS request: "+ req.url);
+    res.end("502 Bad Gateway\n\n" + "MATCHLESS request: "+ req.headers.host+req.url);
   } else {
     proxy.web(req, res,
               { //hostname: target.host,
