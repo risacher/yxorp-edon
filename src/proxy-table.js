@@ -260,7 +260,7 @@ ProxyTable.prototype.getProxyLocation = function (req) {
 
         req.url = url.format(parsed);
         // THIS IS THE ONLY REAL CODE PATH IN YXORP console.log('path3');
-        console.log(parsed);
+        // console.log(parsed);
         return {
           protocol: route.target.url.protocol.replace(':', ''),
           hostname: route.target.url.hostname, //added for compat w/ http2-proxy
