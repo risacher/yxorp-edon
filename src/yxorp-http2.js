@@ -110,7 +110,7 @@ const defaultWSHandler = (err, req, socket, head) => {
   }
 }
 
-const listener = function (req, res) {
+const route = function (req) {
   log('proxy',  'Incoming REQ:', req.method, req.url, req.socket.localAddress, req.socket.localPort);
   log('proxy-headers', 'Incoming REQ Headers', JSON.stringify(req.headers));
   if (req.headers[':authority']) { req.headers.host = req.headers[':authority'];}
@@ -123,10 +123,16 @@ const listener = function (req, res) {
     req.headers.host = config.defaultTarget;
     target = table.getProxyLocation(req);
     if (target) { log('routing',  'target: ', JSON.stringify(target) ); }
+    else { log('routing',  'UNMATCHED request with default target: ', JSON.stringify(target) ); }
   }
+  return target;
+}
+
+const listener = function (req, res) {
+  
+  var target = route(req);
   
   if (null == target) {
-    log ('routing', "UNMATCHED request2: ", req.url);
     res.writeHead(502);
     res.end("502 Bad Gateway\n\n" + "MATCHLESS request: "+ req.headers.host+req.url);
   } else {
@@ -135,7 +141,7 @@ const listener = function (req, res) {
                 //port: target.port,
                 //protocol: target.protocol,
                 onReq: (req, options) => {
-
+                  
                   options.headers['x-forwarded-for'] = req.socket.remoteAddress;
                   options.headers['x-forwarded-port'] = req.socket.localPort;
                   options.headers['x-forwarded-proto'] = req.socket.encrypted ? 'https' : 'http';
@@ -169,10 +175,13 @@ const listener = function (req, res) {
 };
 
 const upgrade = function (req, socket, head) {
+  
   log('proxy', "UPGRADE", req.url, socket.localPort);
-  var target = table.getProxyLocation(req);
+  var target = route(req);
   if (null != target) {
     proxy.ws(req, socket, head, target, defaultWSHandler);
+  } else {
+    socket.close()
   }
 };
 
