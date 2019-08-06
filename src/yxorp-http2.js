@@ -111,7 +111,7 @@ const defaultWSHandler = (err, req, socket, head) => {
 }
 
 const route = function (req) {
-  log('proxy',  'Incoming REQ:', req.method, req.url, req.socket.localAddress, req.socket.localPort);
+  log('proxy',  'Incoming REQ:', req.method, req.url, req.socket.remoteAddress, req.socket.localPort);
   log('proxy-headers', 'Incoming REQ Headers', JSON.stringify(req.headers));
   if (req.headers[':authority']) { req.headers.host = req.headers[':authority'];}
   
