@@ -53,7 +53,7 @@ try{
   log('error', "error was "+ err.message);
 }
 
-var jwtKey = fs.readFileSync(config.jwtKey, "utf8");
+var jwtKey = config.jwt?fs.readFileSync(config.jwtKey, "utf8"):null;
 
 
 var read_routes = function(event, filename) {
@@ -193,7 +193,7 @@ function init_https() {
   https_options = {
     key: fs.readFileSync(config.serverKey, 'utf8'),
     cert: fs.readFileSync(config.serverCert, 'utf8'),
-    ca: parseCertChain(fs.readFileSync(config.CACerts, 'utf8')),
+//    ca: parseCertChain(fs.readFileSync(config.CACerts, 'utf8')),
     secureOptions: constants.SSL_OP_NO_SSLv3 | constants.SSL_OP_NO_SSLv2 | constants.SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION,
     //secureOptions:require('constants').SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION,
     // https://certsimple.com/blog/a-plus-node-js-ssl
@@ -263,8 +263,12 @@ var server = http.createServer({ allowHTTP1: true }).listen(80);
 server.on('request', listener);
 server.on('upgrade', upgrade);
 
-init_https();
-fs.watch(config.serverCert, {persistent: false}, init_https);
+try{
+    init_https();
+    fs.watch(config.serverCert, {persistent: false}, init_https);
+} catch (e) {
+    console.error("Could not start HTTPS server", e);
+}
 
 // start REPL 
 
