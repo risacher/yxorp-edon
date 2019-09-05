@@ -13,23 +13,47 @@ const constants = require('constants');
 const proxyTable = require('./proxy-table.js');
 const ocsp = require('ocsp');
 const jwt = require('jsonwebtoken');
-var tls = require('tls');
+//var tls = require('tls');
 //tls.CLIENT_RENEG_LIMIT = 2; //default is 3, which should be okay
 //tls.CLIENT_RENEG_WINDOW = 1 / 0;
 var ocspCache = new ocsp.Cache();
 
+//copied from http2-proxy
+const CONNECTION = 'connection'
+const HOST = 'host'
+const KEEP_ALIVE = 'keep-alive'
+const PROXY_AUTHORIZATION = 'proxy-authorization'
+const PROXY_CONNECTION = 'proxy-connection'
+const TE = 'te'
+const FORWARDED = 'forwarded'
+const TRAILER = 'trailer'
+const TRANSFER_ENCODING = 'transfer-encoding'
+const UPGRADE = 'upgrade'
+const VIA = 'via'
+const AUTHORITY = ':authority'
+const HTTP2_SETTINGS = 'http2-settings'
+
 var debug = {
-  "proxy": true,
-  "proxy-headers": false,
-  "ocsp": false,
-  "routing": true,
-  "config": true,
-  "reneg": true,
-  'jwt': true,
-  'tls': true,
-  'modules': true,
-  'error': true
+    "proxy": false,
+    "upgrade": true,
+    "onRes": false,
+    "proxy-headers": false,
+    "ocsp": false,
+    "routing": false,
+    "config": true,
+    "reneg": true,
+    'jwt': true,
+    'tls': true,
+    'modules': true,
+    'error': true
 };
+
+
+/* In node's http, a bunch of Symbols() are used as keys, but since
+ * they are not exported from the module, there is no clean way to use
+ * them outsode the module.  This is intentional, but for I wanted to
+ * access those anyway.  So I found this evil hack to find a reference
+ * to the opaque keys. */
 
 /* as ugly a hack as ever I saw.  Fortunately, not needed */
 const outHeadersKey = Object.getOwnPropertySymbols(new http.OutgoingMessage())
@@ -53,7 +77,29 @@ try{
   log('error', "error was "+ err.message);
 }
 
-var jwtKey = config.jwt?fs.readFileSync(config.jwtKey, "utf8"):null;
+//var jwtKey = fs.readFileSync(config.jwtKey, "utf8");
+
+                                  
+function getClientCert(req, res, cb) {
+  var socket = req.connection;
+  var result = socket.renegotiate(optClientAuth, function(err){
+    if (!err) {
+      // catch errors - getPeerCertificate() can be undef if user something goes wrong
+      var token = jwt.sign({CN: req.connection.getPeerCertificate().subject.CN,
+                            exp: Math.floor(new Date().getTime()/1000) + 7*24*60*60,
+                            iat: Math.floor(Date.now() / 1000) - 30 },
+                           jwtKey);
+      log('jwt', token);
+      
+      res.setHeader('Set-Cookie', ['jwt='+token+'; Path=/; Secure']);   
+      cb(req, res);
+      
+    } else {
+      console.log(err.message);
+    }
+  });
+}
+
 
 
 var read_routes = function(event, filename) {
@@ -98,91 +144,176 @@ const finalhandler = require('finalhandler');
 
 const defaultWebHandler = (err, req, res) => {
   if (err) {
-    console.error('proxy error', err)
+    console.error('web proxy error', err)
     finalhandler(req, res)(err)
   }
 }
 
 const defaultWSHandler = (err, req, socket, head) => {
   if (err) {
-    console.error('proxy error', err)
+    console.error('ws proxy error', err)
     socket.destroy()
   }
 }
 
 const route = function (req) {
-  log('proxy',  'Incoming REQ:', req.method, req.url, req.socket.remoteAddress, req.socket.localPort);
-  log('proxy-headers', 'Incoming REQ Headers', JSON.stringify(req.headers));
-  if (req.headers[':authority']) { req.headers.host = req.headers[':authority'];}
-  
-  var target = table.getProxyLocation(req);
-  if (target) { log('routing',  'target: ', JSON.stringify(target) ); }
+    if (req.headers[':authority']) { req.headers.host = req.headers[':authority'];}
+    log('proxy',  'Incoming REQ:', req.method, req.headers.host, req.url, req.socket.remoteAddress, req.socket.localPort);
+    log('proxy-headers', 'Incoming REQ Headers', JSON.stringify(req.headers));
     
-  if (null == target) {
-    log ('routing', "UNMATCHED request, attempt default target: ", req.url);
-    req.headers.host = config.defaultTarget;
-    target = table.getProxyLocation(req);
-    if (target) { log('routing',  'target: ', JSON.stringify(target) ); }
-    else { log('routing',  'UNMATCHED request with default target: ', JSON.stringify(target) ); }
-  }
-  return target;
+    var target = table.getProxyLocation(req);
+    if (target) {
+	target.method = req.method;
+	log('routing',  'target: ', JSON.stringify(target) );
+    }
+    
+    if (null == target) {
+	log ('routing', "UNMATCHED request, attempt default target: ", req.url);
+	req.headers.host = config.defaultTarget;
+	target = table.getProxyLocation(req);
+	if (target) { log('routing',  'target: ', JSON.stringify(target) ); }
+	else { log('routing',  'UNMATCHED request with default target: ', JSON.stringify(target) ); }
+    }
+    if (target) { target.method = req.method; }
+    return target;
 }
+
+var optClientAuth = {
+  requestCert: true,
+  rejectUnauthorized: true
+};
 
 const listener = function (req, res) {
   
-  var target = route(req);
-  
-  if (null == target) {
-    res.writeHead(502);
-    res.end("502 Bad Gateway\n\n" + "MATCHLESS request: "+ req.headers.host+req.url);
-  } else {
-    proxy.web(req, res,
-              { //hostname: target.host,
-                //port: target.port,
-                //protocol: target.protocol,
-                onReq: (req, options) => {
-                  
-                  options.headers['x-forwarded-for'] = req.socket.remoteAddress;
-                  options.headers['x-forwarded-port'] = req.socket.localPort;
-                  options.headers['x-forwarded-proto'] = req.socket.encrypted ? 'https' : 'http';
-                  options.headers['x-forwarded-host'] = req.headers['host'];
-                  options.headers['host'] = req.headers['host'];
-                  options.rejectUnauthorized = false;
-                  options.trackRedirects = true;
-                  options.host = target.host;                  
-                  options.hostname = target.hostname;
-                  options.port = target.port;
-                  options.path = target.path;
-                  options.protocol = target.protocol+':';
-                  //                  log('proxy', "OPTIONS", options);
-                  
-                  var r = (target.protocol === 'http')?
-                      http.request(options)
-                      : https.request(options);
-                  // this is evil black magic, but works for node's http clientRequest
-                  //r[outHeadersKey].host = ['host', req.headers.host] ;
-                  log('proxy-headers', 'proxyReq', r[outHeadersKey]);
-                  return r;
-                },
-                // This breaks everything, for no obvious reason.
-                // I don't know how to use onRes, which is poorly documented.
-//                onRes: (req, resOrSocket, proxyRes, callback) => {
-//                 log('proxy', 'REDIRECTS:', JSON.stringify(proxyRes.redirects));
-//                return false;
-//                }
-              }, defaultWebHandler );
-  }
+    var target = route(req);
+    if (null == target) {
+	res.writeHead(502);
+	res.end("502 Bad Gateway\n\n" + "MATCHLESS request: "+ req.headers.host+req.url);
+	return;
+    }
+
+/* commented out because http2 cant do reactive client certs as of 2019-09-05    
+    if (target.options && target.options.requestCert
+	&& (req.connection.socket instanceof http2.Http2Stream)) {
+	var socket = req.connection;
+	console.log('socet', socket);
+	var result = socket.renegotiate(optClientAuth, function(err){
+	    if (!err) {
+		console.log("inside hardcoded renegotiate callback");
+		// catch errors - getPeerCertificate() can be undef if something goes wrong
+//		var token = jwt.sign({CN: req.connection.getPeerCertificate().subject.CN,
+//				      exp: Math.floor(new Date().getTime()/1000) + 7*24*60*60,
+//				      iat: Math.floor(Date.now() / 1000) - 30 },
+//				     jwtKey);
+//		console.log('jwt:', token);
+		
+//		res.setHeader('Set-Cookie', ['jwt='+token+'; Path=/; Secure']);   
+//		res.writeHead(200);
+//		res.end("<pre>"
+//			+JSON.stringify(req.connection.getCipher(),null, "  ")
+		// 	+"\n"
+		// 	+JSON.stringify(req.connection.getPeerCertificate(),null, "  ")
+		// 	+"</pre>"
+		// 	+"Authenticated Hello World\n");
+		// //        cb(req, res);
+		
+	    } else {
+		console.log(err.message);
+	    }
+	});
+    }
+*/	
+    proxy.web(req, res, {
+        onReq: (req, options) => {
+	    if (! options.headers) { options.headers={}; }
+	    //log('proxy-headers', 'arguments', options);
+            options.headers['x-forwarded-for'] = req.socket.remoteAddress;
+            options.headers['x-forwarded-port'] = req.socket.localPort;
+            options.headers['x-forwarded-proto'] = req.socket.encrypted ? 'https' : 'http';
+            options.headers['x-forwarded-host'] = req.headers['host'];
+            options.headers['host'] = req.headers['host'];
+            options.rejectUnauthorized = false;
+            options.trackRedirects = true;
+            options.host = target.host;                  
+            options.hostname = target.hostname;
+            options.port = target.port;
+            options.path = target.path;
+            options.protocol = target.protocol+':';
+            var r = (target.protocol === 'http')?
+                http.request(options)
+                : https.request(options);
+            // this is evil black magic, but works for node's http clientRequest
+            //r[outHeadersKey].host = ['host', req.headers.host] ;
+            log('proxy-headers', 'proxyReq', r[outHeadersKey]);
+            return r;
+        },
+        
+	//		  onRes: onResHandler
+    }, defaultWebHandler );
 };
 
-const upgrade = function (req, socket, head) {
-  
-  log('proxy', "UPGRADE", req.url, socket.localPort);
-  var target = route(req);
-  if (null != target) {
-    proxy.ws(req, socket, head, target, defaultWSHandler);
-  } else {
-    socket.close()
+// basically lifted from http2-proxy/index.js, but copied here so I
+// can add a log statement or otherwise mod it.
+function onResHandler (req, res, proxyRes) {
+  log('onRes', proxyRes.url, proxyRes.statusCode);
+  const headers = setupHeaders(proxyRes.headers);
+  res.statusCode = proxyRes.statusCode
+  for (const [ key, value ] of Object.entries(headers)) {
+    res.setHeader(key, value)
   }
+  proxyRes.pipe(res)
+}
+
+// direct from http2-proxy/index.js
+function sanitize (name) {
+  return name ? name.trim().toLowerCase() : ''
+}
+
+function setupHeaders (headers) {
+  const connection = sanitize(headers[CONNECTION])
+
+  if (connection && connection !== CONNECTION && connection !== KEEP_ALIVE) {
+    for (const name of connection.split(',')) {
+      delete headers[name.trim()]
+    }
+  }
+
+  // Remove hop by hop headers
+  delete headers[CONNECTION]
+  delete headers[KEEP_ALIVE]
+  delete headers[TRANSFER_ENCODING]
+  delete headers[TE]
+  delete headers[UPGRADE]
+  delete headers[PROXY_AUTHORIZATION]
+  delete headers[PROXY_CONNECTION]
+  delete headers[TRAILER]
+  delete headers[HTTP2_SETTINGS]
+
+  return headers
+}
+
+const upgrade = function (req, socket, head) {
+    req.which = 'inbound';
+    log('upgrade', "REQ HEADERS", req.headers, req.url);
+    var target = route(req);
+    if (null != target) {
+	target.protocol = target.protocol.replace(/http$/, 'http:');
+	log('upgrade', "TARGET OPTIONS", target);
+	proxy.ws(req, socket, head, {
+	    onReq: (req, options) => {
+                options.host = target.host;                  
+                options.hostname = target.hostname;
+                options.port = target.port;
+                options.path = target.path;
+                var r = (target.protocol.match(/^(http|ws):?$/))?
+		    http.request(options)
+		    : https.request(options);
+                return r;
+	    }
+	}, defaultWSHandler);
+    } else {
+	socket.close()
+    }
 };
 
 
@@ -191,10 +322,12 @@ var https_server;
 
 function init_https() {
   https_options = {
+    allowHTTP1: true,
     key: fs.readFileSync(config.serverKey, 'utf8'),
     cert: fs.readFileSync(config.serverCert, 'utf8'),
-//    ca: parseCertChain(fs.readFileSync(config.CACerts, 'utf8')),
-    secureOptions: constants.SSL_OP_NO_SSLv3 | constants.SSL_OP_NO_SSLv2 | constants.SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION,
+      secureOptions: constants.SSL_OP_NO_SSLv3 | constants.SSL_OP_NO_SSLv2 | constants.SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION,
+//      requestCert: true,
+//      rejectUnauthorized: false, 
     //secureOptions:require('constants').SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION,
     // https://certsimple.com/blog/a-plus-node-js-ssl
     ciphers: [
@@ -214,9 +347,12 @@ function init_https() {
       "!PSK",
       "!SRP",
       "!CAMELLIA"
-    ].join(':'),
-    allowHTTP1: true
+    ].join(':')
   };
+//  if (config.CACerts) {
+//    https_options['ca'] = parseCertChain(fs.readFileSync(config.CACerts, 'utf8'))
+//  }
+
   if (https_server) { https_server.close(); }
   log('tls', "*** reloading https_server ***") ;
   https_server = http2.createSecureServer(https_options).listen({port:443});
@@ -259,24 +395,32 @@ function init_https() {
 });
 }
 
-var server = http.createServer({ allowHTTP1: true }).listen(80);
+var server = http.createServer({ }).listen(80);
 server.on('request', listener);
 server.on('upgrade', upgrade);
 
-try{
-    init_https();
-    fs.watch(config.serverCert, {persistent: false}, init_https);
-} catch (e) {
-    console.error("Could not start HTTPS server", e);
-}
+init_https();
+fs.watch(config.serverCert, {persistent: false}, init_https);
 
 // start REPL 
+
+var help = `REPL processes javascript, but the only two objects are debug and table
+(and help)
+
+you can say something like:
+   debug.tls = false;
+`;
 
 const r = repl.start('> ');
 Object.defineProperty(r.context, 'debug', {
   configurable: true,
   enumerable: true,
   value: debug
+});
+Object.defineProperty(r.context, 'help', {
+  configurable: true,
+  enumerable: true,
+  value: help
 });
 Object.defineProperty(r.context, 'table', {
   configurable: true,
