@@ -19,6 +19,7 @@ Since neither node http2 nor browsers implement http2 secondary certs
 at this time (nor post-handshake authentication), "reactive client
 certs" are only doable with TLS 1.2  (sadface)
 
+(Update: 2019-09-09 -having a lot of trouble getting it to work in TLS 1.2.)
 
 
 2019-04-17
