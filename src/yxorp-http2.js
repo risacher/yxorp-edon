@@ -319,6 +319,7 @@ const upgrade = function (req, socket, head) {
 
 var https_options;
 var https_server;
+var certwatcher;
 
 function init_https() {
   https_options = {
@@ -392,7 +393,9 @@ function init_https() {
         });
       });
     }
-});
+  });
+  if (certwatcher) { certwatcher.close(); } 
+  certwatcher = fs.watch(config.serverCert, {persistent: false}, init_https);
 }
 
 var server = http.createServer({ }).listen(80);
@@ -400,7 +403,6 @@ server.on('request', listener);
 server.on('upgrade', upgrade);
 
 init_https();
-fs.watch(config.serverCert, {persistent: false}, init_https);
 
 // start REPL 
 
