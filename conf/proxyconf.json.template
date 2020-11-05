@@ -4,5 +4,7 @@
     "serverCert": "/etc/ssl/server.crt",
     "CACerts": "conf/ca.crt",
     "routes": "conf/routes.json",
-    "modules": [ "test" ]
+    "modules": [ "test" ],
+    "ports": { "80": "http",
+	       "443": "http2" }
 }
