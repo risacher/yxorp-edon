@@ -3,6 +3,8 @@
 const fs = require('fs');
 //const http = require('follow-redirects').http;
 const http = require('http');
+const net = require('net');
+const tls = require('tls');
 const https = require('https');
 const http2 = require('http2');
 const proxy = require('http2-proxy');
@@ -122,7 +124,7 @@ var read_routes = function(event, filename) {
 };
 
 read_routes();
-fs.watch(config.routes, {persistent: false}, read_routes);
+fs.realpath(config.routes, (err, resolvedPath) => fs.watch(resolvedPath, {persistent: false}, read_routes));
 
 function parseCertChain(chain) {
   chain = chain.split('\n');
@@ -394,8 +396,34 @@ function init_http2(port) {
       });
     }
   });
+
+  if (0) {
+    // this is just a hack to get the parsed certificate object from the tls context
+    // specifically so to get the valid dates.  //NOT WORKING 2021-05-12
+    let secureContext = tls.createSecureContext({
+      cert: https_options.cert
+    });
+    let secureSocket = new tls.TLSSocket(new net.Socket(), { secureContext });
+    https_server.cert = secureSocket.getCertificate();  // THIS DOES NOT WORK AND CRASHES
+    log('tls', `cert valid from ${https_server.cert.valid_from}`);
+    log('tls', `cert valid to ${https_server.cert.valid_to}`);
+    secureSocket.destroy();
+    // 
+  }
+  if (0) {  //this looks promising, but I think it needs a newer version of Node than I'm using
+
+    const { X509Certificate } = require('crypto');
+    const x509 = new X509Certificate(https_options.cert);
+    log('tls', `cert.subject ${x509.subject}`);
+  }
+
+  
   if (certwatcher) { certwatcher.close(); } 
-    certwatcher = fs.watch(config.serverCert, {persistent: false}, ()=>{init_http2(port)});
+  fs.realpath(config.serverCert,
+              (err, resolvedPath) => {
+                log('tls', `watching for changes on ${resolvedPath}`);
+                certwatcher = fs.watch(config.serverCert, {persistent: false}, init_https);
+              } );
 }
 
 function start_services() {
