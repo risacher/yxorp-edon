@@ -321,7 +321,7 @@ var https_options;
 var https_server;
 var certwatcher;
 
-function init_https() {
+function init_http2(port) {
   https_options = {
     allowHTTP1: true,
     key: fs.readFileSync(config.serverKey, 'utf8'),
@@ -356,7 +356,7 @@ function init_https() {
 
   if (https_server) { https_server.close(); }
   log('tls', "*** reloading https_server ***") ;
-  https_server = http2.createSecureServer(https_options).listen({port:443});
+  https_server = http2.createSecureServer(https_options).listen({'port': port});
   https_server.on('request', listener);
   https_server.on('upgrade', upgrade);
   ocsp.getOCSPURI(https_options.cert, function(err, uri) { 
@@ -395,14 +395,26 @@ function init_https() {
     }
   });
   if (certwatcher) { certwatcher.close(); } 
-  certwatcher = fs.watch(config.serverCert, {persistent: false}, init_https);
+    certwatcher = fs.watch(config.serverCert, {persistent: false}, ()=>{init_http2(port)});
 }
 
-var server = http.createServer({ }).listen(80);
-server.on('request', listener);
-server.on('upgrade', upgrade);
+function start_services() {
+    for (const [port, service] of Object.entries(config.ports)) {
+	if (service == 'http') {
+	    console.log(`starting http server on ${port}`);
+	    let server = http.createServer({ }).listen(parseInt(port,10));
+	    server.on('request', listener);
+	    server.on('upgrade', upgrade);
+	}
+	if (service == 'http2') {
+	    console.log(`starting http2 server on ${port}`);
+	    init_http2(parseInt(port,10));
+	}
+    }
+}
 
-init_https();
+start_services();
+//init_https();
 
 // start REPL 
 
