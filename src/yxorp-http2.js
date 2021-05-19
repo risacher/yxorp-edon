@@ -422,7 +422,7 @@ function init_http2(port) {
   fs.realpath(config.serverCert,
               (err, resolvedPath) => {
                 log('tls', `watching for changes on ${resolvedPath}`);
-                certwatcher = fs.watch(config.serverCert, {persistent: false}, init_https);
+                certwatcher = fs.watch(config.serverCert, {persistent: false}, init_http2);
               } );
 }
 

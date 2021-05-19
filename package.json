@@ -7,7 +7,7 @@
     "url": "https://github.com/risacher/yxorp-edon.git"
   },
   "dependencies": {
-    "bcrypt": "^5.0.0",
+    "bcrypt": ">=5.0.1",
     "express": "^4.17.1",
     "finalhandler": "^1.1.2",
     "follow-redirects": "^1.7.0",
