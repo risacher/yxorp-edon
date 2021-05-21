@@ -12,7 +12,7 @@
     "finalhandler": "^1.1.2",
     "follow-redirects": "^1.7.0",
     "http-proxy": "^1.18.1",
-    "http2-proxy": "^5.0.34",
+    "http2-proxy": ">=5.0.53",
     "jsonwebtoken": "^8.5.1",
     "ocsp": "^1.2.0",
     "socket.io": "^2.4.0",
