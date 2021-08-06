@@ -225,33 +225,36 @@ const listener = function (req, res) {
 	});
     }
 */	
-    proxy.web(req, res, {
-        onReq: (req, options) => {
-	    if (! options.headers) { options.headers={}; }
-	    //log('proxy-headers', 'arguments', options);
-            options.headers['x-forwarded-for'] = req.socket.remoteAddress;
-            options.headers['x-forwarded-port'] = req.socket.localPort;
-            options.headers['x-forwarded-proto'] = req.socket.encrypted ? 'https' : 'http';
-            options.headers['x-forwarded-host'] = req.headers['host'];
-            options.headers['host'] = req.headers['host'];
-            options.rejectUnauthorized = false;
-            options.trackRedirects = true;
-            options.host = target.host;                  
-            options.hostname = target.hostname;
-            options.port = target.port;
-            options.path = target.path;
-            options.protocol = target.protocol+':';
-            var r = (target.protocol === 'http')?
-                http.request(options)
-                : https.request(options);
-            // this is evil black magic, but works for node's http clientRequest
-            //r[outHeadersKey].host = ['host', req.headers.host] ;
-            log('proxy-headers', 'proxyReq', r[outHeadersKey]);
-            return r;
-        },
-        
-	//		  onRes: onResHandler
-    }, defaultWebHandler );
+  proxy.web(req, res, {
+    onReq: (req, options) => {
+      if (! options.headers) { options.headers={}; }
+      //log('proxy-headers', 'arguments', options);
+      if (req.socket) {
+        req.socket.remoteAddress ? (options.headers['x-forwarded-for'] = req.socket.remoteAddress) : null;
+        req.socket.localPort ? (options.headers['x-forwarded-port'] = req.socket.localPort) : null;
+        options.headers['x-forwarded-proto'] = req.socket.encrypted ? 'https' : 'http';
+      }
+      if ( req.headers['host'] ) {
+        options.headers['x-forwarded-host'] = req.headers['host'];
+        options.headers['host'] = req.headers['host'];
+      }
+      options.rejectUnauthorized = false;
+      options.trackRedirects = true;
+      options.host = target.host;
+      options.hostname = target.hostname;
+      options.port = target.port;
+      options.path = target.path;
+      options.protocol = target.protocol+':';
+      var r = (target.protocol === 'http')?
+          http.request(options)
+          : https.request(options);
+      // this is evil black magic, but works for node's http clientRequest
+      //r[outHeadersKey].host = ['host', req.headers.host] ;
+      log('proxy-headers', 'proxyReq', r[outHeadersKey]);
+      return r;
+    },
+    //		  onRes: onResHandler
+  }, defaultWebHandler );
 };
 
 // basically lifted from http2-proxy/index.js, but copied here so I
