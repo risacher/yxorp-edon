@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 //const http = require('follow-redirects').http;
+const { Certificate, PrivateKey } = require('@fidm/x509')
 const http = require('http');
 const net = require('net');
 const tls = require('tls');
@@ -160,7 +161,7 @@ const defaultWSHandler = (err, req, socket, head) => {
 
 const route = function (req) {
     if (req.headers[':authority']) { req.headers.host = req.headers[':authority'];}
-    log('proxy',  'Incoming REQ:', req.method, req.headers.host, req.url, req.socket.remoteAddress, req.socket.localPort);
+    log('proxy',  'Incoming REQ:', req.socket.encrypted, req.headers.host, req.url, req.socket.remoteAddress, req.socket.localPort);
     log('proxy-headers', 'Incoming REQ Headers', JSON.stringify(req.headers));
     
     var target = table.getProxyLocation(req);
@@ -193,6 +194,18 @@ const listener = function (req, res) {
 	res.end("502 Bad Gateway\n\n" + "MATCHLESS request: "+ req.headers.host+req.url);
 	return;
     }
+
+  if (config.forceTLS && ! req.socket.encrypted) {
+    let now = new Date();
+    if (now < https_options.validTo && now > https_options.validFrom) {
+      res.writeHead(302, {
+        'Location': `https://${req.headers.host}${req.url}`
+        //add other headers here...
+      });
+      res.end();
+      return;
+    }
+  }
 
 /* commented out because http2 cant do reactive client certs as of 2019-09-05    
     if (target.options && target.options.requestCert
@@ -413,11 +426,15 @@ function init_http2(port) {
     secureSocket.destroy();
     // 
   }
-  if (0) {  //this looks promising, but I think it needs a newer version of Node than I'm using
+  if (1) {  // this needs node 15 or later
 
     const { X509Certificate } = require('crypto');
-    const x509 = new X509Certificate(https_options.cert);
+    let x509 = new X509Certificate(https_options.cert);
+    https_options.validTo = new Date (x509.validTo);
+    https_options.validFrom = new Date (x509.validFrom);
     log('tls', `cert.subject ${x509.subject}`);
+    log('tls', `cert.validTo ${https_options.validTo}`);
+    log('tls', `cert.validFrom ${https_options.validFrom}`);
   }
 
   

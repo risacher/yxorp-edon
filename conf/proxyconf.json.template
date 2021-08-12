@@ -3,6 +3,7 @@
     "serverKey": "/etc/ssl/private/server.key",
     "serverCert": "/etc/ssl/server.crt",
     "CACerts": "conf/ca.crt",
+    "forceTLS": false,
     "routes": "conf/routes.json",
     "modules": [ "test" ],
     "ports": { "80": "http",
