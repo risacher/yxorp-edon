@@ -11,7 +11,7 @@
     "bcrypt": ">=5.0.1",
     "express": "^4.17.1",
     "finalhandler": "^1.1.2",
-    "follow-redirects": "^1.7.0",
+    "follow-redirects": "^1.14.7",
     "http-proxy": "^1.18.1",
     "http2-proxy": ">=5.0.53",
     "jsonwebtoken": "^8.5.1",
