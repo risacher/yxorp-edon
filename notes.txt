@@ -1,3 +1,25 @@
+2023-04-13
+
+https://github.com/nodejs/node/issues/41211
+
+Node's TLS implemetation will not do conditional requestCert, and recommendations are to use requestCert:true and rejectUnauthorized:false.  I don't want this but it might be as good as it gets.
+
+2022-11-24
+
+node's https library has code to add context after SNI which I don't
+know if I can get to work for client cert authentication.  I tried it
+and it the browser didn't request a certificate, but that might be
+because I don't have the proper CA certs loaded on the server side. (I
+have a new CAC, but haven't pulled the DoD CA certs in a while.)
+
+That said, I'd expect it to not authenticate if that happened,
+considering that I have rejectUnauthorized set to true.
+
+I also don't have a server cert for pki.risacher.org ... although... I
+thought I had a wildcard cert?  Hmm.  Actually, maybe I have a
+wildcard DNS record, not a certificate.
+
+
 2020-01-23
 
 https://github.com/nodejs/node/issues/29630

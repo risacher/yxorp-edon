@@ -1,0 +1,23 @@
+{
+  "defaultTarget": "risacher.org",
+  "jwtKey": "/etc/jwtkey.txt",
+  "serverKey": "/etc/letsencrypt/live/risacher.org-0002/privkey.pem",
+  "serverCert": "/etc/letsencrypt/live/risacher.org-0002/fullchain.pem",
+  "chainCert": "/etc/letsencrypt/live/risacher.org-0002/chain.pem",
+  "CACerts": "conf/DoD_CAs.pem",
+  "routes": "conf/routes.json",
+  "interfaces": {
+    "ens5": {
+      "forceTLS": true,
+      "ports": { "80": "http",
+	         "443": "http2" }
+    },
+    "ens6": {
+      "forceTLS": true,
+      "requestCert": true,
+      "ports": { "80": "http",
+	         "443": "http2" }
+    }
+  },
+  "modules": [ "test" ]
+}
