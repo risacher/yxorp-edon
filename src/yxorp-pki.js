@@ -374,7 +374,7 @@ var optClientAuth = {
 var http_servers = [];;
 var https_servers = [];;
 var certwatcher;
-
+var certwatcher_resolved;
 
 
 function init_http2(addr, port, opts) {
@@ -487,12 +487,13 @@ function init_http2(addr, port, opts) {
       });
     }
   });
-  if (certwatcher) { certwatcher.close(); } 
+  if (certwatcher) { certwatcher.close(); certwatcher_resolved.close(); }
   fs.realpath(config.serverCert,
               (err, resolvedPath) => {
-                log('tls', `watching for changes on ${resolvedPath}`);
-                certwatcher = fs.watch(resolvedPath, {persistent: false}, init_http2);
-              } );
+                log('tls', `watching for changes on ${config.serverCert} and ${resolvedPath}`);
+                certwatcher_resolved = fs.watch(resolvedPath, {persistent: false}, init_http2);
+                certwatcher = fs.watch(config.serverCert, {persistent: false}, init_http2);
+              } )
 }
                     
                    
