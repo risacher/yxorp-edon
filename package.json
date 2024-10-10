@@ -9,6 +9,7 @@
   "dependencies": {
     "@fidm/x509": "^1.2.1",
     "bcrypt": ">=5.0.1",
+    "escape-html": "^1.0.3",
     "express": "^4.17.1",
     "finalhandler": "^1.1.2",
     "follow-redirects": "^1.7.0",

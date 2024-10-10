@@ -9,6 +9,7 @@ const constants = require('constants');
 const httpProxy = require('http-proxy');
 const proxyTable = require('./proxy-table.js');
 const ocsp = require('ocsp');
+const escape = require('escape-html')
 const repl = require('repl');
 const jwt = require('jsonwebtoken');
 var tls = require('tls');
@@ -181,7 +182,7 @@ var listener = function(req, res) {
   if (null == target) {
     console.log ("UNMATCHED request: ", req.url);
     res.writeHead(502);
-    res.end("502 Bad Gateway\n\n" + "UNMATCHED request: "+ req.url);
+    res.end("502 Bad Gateway\n\n" + "UNMATCHED request: "+ escape(req.url));
   } else {
     proxy.web(req, res, { target: target });
   }

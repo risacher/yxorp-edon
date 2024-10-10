@@ -15,6 +15,7 @@ const constants = require('constants')
 //const httpProxy = require('http-proxy');
 const proxyTable = require('./proxy-table.js')
 const ocsp = require('ocsp')
+const escape = require('escape-html')
 const jwt = require('jsonwebtoken')
 const os = require('os')
 const { X509Certificate } = require('crypto');
@@ -215,9 +216,9 @@ const listener = function (req, res) {
 
     var target = route(req);
     if (null == target) {
-	res.writeHead(502);
-	res.end("502 Bad Gateway\n\n" + "MATCHLESS request: "+ req.headers.host+req.url);
-	return;
+      res.writeHead(502);
+      res.end("502 Bad Gateway\n\n" + "MATCHLESS request: "+ escape(req.headers.host+req.url));
+      return;
     }
 
 //  console.log("this ", this.iface_opts);
