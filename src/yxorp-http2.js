@@ -147,8 +147,8 @@ const finalhandler = require('finalhandler');
 
 const defaultWebHandler = (err, req, res) => {
   if (err) {
-    console.error('web proxy error', err)
-    finalhandler(req, res)(err)
+      log("proxy", 'web proxy error:', err, " url: ", req.url)
+      finalhandler(req, res)(err)
   }
 }
 
