@@ -292,6 +292,18 @@ const listener = function (req, res) {
       var r = (target.protocol === 'http')?
           http.request(options)
           : https.request(options);
+      // Confirmed via a live 504: outbound requests can be handed a REUSED
+      // keep-alive socket from the agent's pool (reusedSocket: true in the
+      // HttpError), which can still be carrying a stale idle-timeout from
+      // the pool's own housekeeping — one that was never meant to apply to
+      // *this* request's actual duration. Long-polling (Socket.io) requests
+      // are legitimately held open by the backend for a while; disable the
+      // timeout on this request explicitly rather than trust whatever the
+      // reused socket happened to have set on it. http2-proxy's own
+      // setupSocket() already does the equivalent for the WS-upgrade path
+      // (see onProxyReqUpgrade) — this is the same fix for the plain
+      // (non-upgrade) proxied-request path, which that helper never covers.
+      r.setTimeout(0);
       // this is evil black magic, but works for node's http clientRequest
       //r[outHeadersKey].host = ['host', req.headers.host] ;
       log('proxy-headers', 'proxyReq', r[outHeadersKey]);
@@ -357,6 +369,12 @@ const upgrade = function (req, socket, head) {
                 var r = (target.protocol.match(/^(http|ws):?$/))?
 		    http.request(options)
 		    : https.request(options);
+                // Same reasoning as the plain proxy.web() onReq handler
+                // above: a reused pooled socket could carry a stale timeout
+                // that fires before the WS handshake/upgrade completes,
+                // i.e. before http2-proxy's own setupSocket() gets a chance
+                // to disable it on response. Belt-and-suspenders.
+                r.setTimeout(0);
                 return r;
 	    }
 	}, defaultWSHandler);
@@ -436,6 +454,21 @@ function init_http2(addr, port, opts) {
                                                                      'host': addr});
   https_servers.push(https_server);
   https_server.iface_opts = opts;
+  // Node's default keepAliveTimeout (5s) applies to the client-facing socket
+  // for the HTTP/1.1 fallback path (allowHTTP1) — including the socket used
+  // for a WebSocket upgrade, which nothing here ever exempts from it (see
+  // setupSocket() in http2-proxy: it disables the timeout on the proxy's
+  // own outbound connection to the backend, never on this client-facing
+  // side). Once armed, that dormant timeout fires ~5s later on an already-
+  // upgraded raw WS tunnel and writes an HTTP-style response onto it,
+  // which the client sees as "Invalid frame header" — and the same
+  // unbounded default kills long-held long-polling requests too (a 504).
+  // Raised to an hour rather than disabled entirely (0): keeps a backstop
+  // against truly-abandoned connections on an internet-facing proxy, while
+  // being far larger than any real request/connection here ever needs.
+  // headersTimeout must stay >= keepAliveTimeout (Node requirement).
+  https_server.keepAliveTimeout = 60 * 60 * 1000;
+  https_server.headersTimeout   = 60 * 60 * 1000;
   https_server.on('request', listener);
   https_server.on('upgrade', upgrade);
   https_server.on('secureConnection', (s)=>{
@@ -507,6 +540,7 @@ function start_services() {
   const ifaces = os.networkInterfaces();
 
   for (const [iface, opts] of Object.entries(config.interfaces)) {
+    if (!ifaces[iface]) { console.warn(`Warning: interface ${iface} not found, skipping`); continue; }
     let addresses = ifaces[iface].map((e)=>e.address);
     for (let addr of addresses) {
       if (addr.match(/^fe80/)) { continue; }
@@ -516,6 +550,10 @@ function start_services() {
 	  let server = http.createServer({ }).listen({"host": addr,
                                                       "port": parseInt(port,10)});
           server.iface_opts = opts;
+          // See the matching comment on https_server above — same fix,
+          // same reasoning, for the plain-HTTP listener.
+          server.keepAliveTimeout = 60 * 60 * 1000;
+          server.headersTimeout   = 60 * 60 * 1000;
 	  server.on('request', listener);
 	  server.on('upgrade', upgrade);
         }
