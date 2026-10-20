@@ -10,7 +10,7 @@
     "@fidm/x509": "^1.2.1",
     "escape-html": "^1.0.3",
     "finalhandler": "^1.1.2",
-    "follow-redirects": "^1.7.0",
+    "follow-redirects": "^1.16.1",
     "http-proxy": "^1.18.1",
     "http2-proxy": ">=5.0.53",
     "jsonwebtoken": "^9.0.0",
